@@ -13,8 +13,8 @@ pub fn register(context: *shapes.context.Shape, new: shapes.node.data.behavior.S
 }
 
 /// Returns the behavior associated with the given tag, or an error if not found.
-pub fn find(context: *shapes.context.Shape, tag: []const u8) anyerror!*shapes.node.data.behavior.Shape {
-    for (context.*.behaviors.data.items) |*item| {
+pub fn find(behaviors: std.ArrayList(shapes.node.data.behavior.Shape), tag: []const u8) anyerror!*shapes.node.data.behavior.Shape {
+    for (behaviors.items) |*item| {
         if (std.mem.eql(u8, item.*.tag, tag)) {
             return item;
         }

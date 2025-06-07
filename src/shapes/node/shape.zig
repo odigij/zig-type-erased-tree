@@ -1,9 +1,9 @@
 const std = @import("std");
-const dataShape = @import("data/shape.zig").Shape;
+const data = @import("data/shape.zig").Shape;
 
 pub const Shape = struct {
-    parent: ?*Shape,
-    children: std.ArrayList(*Shape),
+    parent: ?usize,
+    children: []usize,
     key: []const u8,
-    data: dataShape,
+    data: data,
 };

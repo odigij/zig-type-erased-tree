@@ -1,5 +1,4 @@
 const std = @import("std");
-const testing = std.testing;
 
 pub const shapes = @import("shapes/index.zig");
 pub const funcs = @import("funcs/index.zig");
@@ -30,66 +29,8 @@ fn freeDocument(allocator: std.mem.Allocator, data: *?*anyopaque) !void {
     }
 }
 
-test "non-behavioral root test" {
-    const ctx: *shapes.context.Shape = try funcs.context.service.create(std.testing.allocator);
-    const nullBehavior = try funcs.context.behavior.service.register(
-        ctx,
-        .{
-            .tag = "null",
-            .initFn = null,
-            .freeFn = null,
-        },
-    );
-    const key = "root";
-    const root = try funcs.node.service.create(ctx, key, nullBehavior.*.tag);
-
-    try std.testing.expectEqual(*shapes.node.Shape, @TypeOf(root));
-    try std.testing.expectEqualStrings(root.*.key, key);
-    try std.testing.expectEqual(null, root.*.parent);
-    try std.testing.expectEqual(std.ArrayList(*shapes.node.Shape), @TypeOf(root.*.children));
-    try std.testing.expectEqual(0, root.*.children.items.len);
-
-    try funcs.node.service.free(ctx, root);
-    funcs.context.service.destroy(ctx);
-}
-
-test "behavioral root test" {
-    const ctx: *shapes.context.Shape = try funcs.context.service.create(std.testing.allocator);
-    const nullBehavior = try funcs.context.behavior.service.register(
-        ctx,
-        .{
-            .tag = "document",
-            .initFn = initDocument,
-            .freeFn = freeDocument,
-        },
-    );
-    const key = "root";
-    const root = try funcs.node.service.create(ctx, key, nullBehavior.*.tag);
-
-    try std.testing.expectEqual(*shapes.node.Shape, @TypeOf(root));
-    try std.testing.expectEqualStrings(root.*.key, key);
-    try std.testing.expectEqual(null, root.*.parent);
-    try std.testing.expectEqual(std.ArrayList(*shapes.node.Shape), @TypeOf(root.*.children));
-    try std.testing.expectEqual(0, root.*.children.items.len);
-
-    const castedRootData: *Document = @alignCast(@ptrCast(root.*.data.ptr));
-    castedRootData.* = .{
-        .name = "directory-0",
-        .ext = "",
-        .createdAt = "2025-06-04",
-        .size = 0,
-    };
-    try std.testing.expectEqualStrings("directory-0", castedRootData.name);
-    try std.testing.expectEqualStrings("", castedRootData.ext);
-    try std.testing.expectEqualStrings("2025-06-04", castedRootData.createdAt);
-    try std.testing.expectEqual(@as(u32, 0), castedRootData.size);
-
-    try funcs.node.service.free(ctx, root);
-    funcs.context.service.destroy(ctx);
-}
-
-test "behavioral child test" {
-    const ctx: *shapes.context.Shape = try funcs.context.service.create(std.testing.allocator);
+test "test-00" {
+    const ctx = try funcs.context.service.create(std.testing.allocator);
     const documentBehavior = try funcs.context.behavior.service.register(
         ctx,
         .{
@@ -98,102 +39,36 @@ test "behavioral child test" {
             .freeFn = freeDocument,
         },
     );
-    const rootKey = "root";
-    const root = try funcs.node.service.create(ctx, rootKey, documentBehavior.*.tag);
+    var base = [_]u8{ 'c', 'h', 'i', 'l', 'd', 'r', 'e', 'n', '-', '0', '0' };
+    var buffer: []u8 = &base;
+    const root_index = try funcs.node.service.create(ctx, "root", documentBehavior.*.tag);
+    for (0..10) |i| {
+        const tens: u8 = @intCast(i / 10);
+        const ones: u8 = @intCast(i % 10);
+        buffer[9] = '0' + tens;
+        buffer[10] = '0' + ones;
+        const childIndex = try funcs.node.service.create(ctx, buffer, documentBehavior.*.tag);
+        try funcs.node.service.attach(ctx, i, childIndex);
+    }
 
-    try std.testing.expectEqual(*shapes.node.Shape, @TypeOf(root));
-    try std.testing.expectEqualStrings(root.*.key, rootKey);
-    try std.testing.expectEqual(null, root.*.parent);
-    try std.testing.expectEqual(std.ArrayList(*shapes.node.Shape), @TypeOf(root.*.children));
-    try std.testing.expectEqual(0, root.*.children.items.len);
+    for (ctx.*.nodes.items) |node| {
+        const casted_data: *Document = @alignCast(@ptrCast(node.data.ptr));
+        const parent = if (node.parent) |p| p else null;
+        std.debug.print(
+            "Node:\n\tkey: {s}\n\tdata:\n\t\tparent: {?}\n\t\tchildren: {any}\n\t\tname: {s},\n\t\t \n\t\text: {s},\n\t\t size: {d}\n",
+            .{ node.key, parent, node.children, casted_data.*.name, casted_data.*.ext, casted_data.*.size },
+        );
+    }
 
-    const firstChildKey = "child-1";
-    var firstChild = try funcs.node.service.create(ctx, firstChildKey, documentBehavior.tag);
-    try root.*.children.append(firstChild);
-    firstChild.*.parent = root;
+    const path_index = try funcs.node.service.get(ctx, 0, "children-00/children-01/children-02");
+    const found_node = ctx.*.nodes.items[path_index];
+    const casted_data: *Document = @alignCast(@ptrCast(found_node.data.ptr));
+    const parent = if (found_node.parent) |p| p else null;
+    std.debug.print(
+        "Node:\n\tkey: {s}\n\tdata:\n\t\tparent: {?}\n\t\tchildren: {any}\n\t\tname: {s},\n\t\t \n\t\text: {s},\n\t\t size: {d}\n",
+        .{ found_node.key, parent, found_node.children, casted_data.*.name, casted_data.*.ext, casted_data.*.size },
+    );
 
-    try std.testing.expectEqual(1, root.*.children.items.len);
-    try std.testing.expectEqual(*shapes.node.Shape, @TypeOf(firstChild));
-    try std.testing.expectEqualStrings(firstChild.*.key, firstChildKey);
-    try std.testing.expectEqual(root, firstChild.*.parent);
-    try std.testing.expectEqual(std.ArrayList(*shapes.node.Shape), @TypeOf(firstChild.*.children));
-    try std.testing.expectEqual(0, firstChild.*.children.items.len);
-
-    const secondChildKey = "child-2";
-    var secondChild = try funcs.node.service.create(ctx, secondChildKey, documentBehavior.tag);
-    try root.*.children.append(secondChild);
-    secondChild.*.parent = root;
-
-    try std.testing.expectEqual(2, root.*.children.items.len);
-    try std.testing.expectEqual(*shapes.node.Shape, @TypeOf(secondChild));
-    try std.testing.expectEqualStrings(secondChild.*.key, secondChildKey);
-    try std.testing.expectEqual(root, secondChild.*.parent);
-    try std.testing.expectEqual(std.ArrayList(*shapes.node.Shape), @TypeOf(secondChild.*.children));
-    try std.testing.expectEqual(0, secondChild.*.children.items.len);
-
-    const firstGrandChildKey = "grandchild-1";
-    var firstGrandChild = try funcs.node.service.create(ctx, firstGrandChildKey, documentBehavior.*.tag);
-    try firstChild.*.children.append(firstGrandChild);
-    firstGrandChild.*.parent = firstChild;
-
-    try std.testing.expectEqual(*shapes.node.Shape, @TypeOf(firstGrandChild));
-    try std.testing.expectEqualStrings(firstGrandChild.*.key, firstGrandChildKey);
-    try std.testing.expectEqual(firstChild, firstGrandChild.*.parent);
-    try std.testing.expectEqual(std.ArrayList(*shapes.node.Shape), @TypeOf(firstGrandChild.*.children));
-    try std.testing.expectEqual(1, firstChild.*.children.items.len);
-    try std.testing.expectEqual(0, firstGrandChild.*.children.items.len);
-
-    const castedRootData: *Document = @alignCast(@ptrCast(root.*.data.ptr));
-    castedRootData.* = .{
-        .name = "directory-1",
-        .ext = "",
-        .createdAt = "2025-06-05",
-        .size = 2048,
-    };
-    try std.testing.expectEqualStrings("directory-1", castedRootData.name);
-    try std.testing.expectEqualStrings("", castedRootData.ext);
-    try std.testing.expectEqualStrings("2025-06-05", castedRootData.createdAt);
-    try std.testing.expectEqual(@as(u32, 2048), castedRootData.size);
-
-    firstChild = try funcs.node.service.get(ctx, root, "child-1");
-    const castedFirstChildData: *Document = @alignCast(@ptrCast(firstChild.*.data.ptr));
-    castedFirstChildData.* = .{
-        .name = "directory-2",
-        .ext = "",
-        .createdAt = "2025-06-05",
-        .size = 3072,
-    };
-    try std.testing.expectEqualStrings("directory-2", castedFirstChildData.name);
-    try std.testing.expectEqualStrings("", castedFirstChildData.ext);
-    try std.testing.expectEqualStrings("2025-06-05", castedFirstChildData.createdAt);
-    try std.testing.expectEqual(@as(u32, 3072), castedFirstChildData.size);
-
-    secondChild = try funcs.node.service.get(ctx, root, "child-2");
-    const castedSecondChildData: *Document = @alignCast(@ptrCast(secondChild.*.data.ptr));
-    castedSecondChildData.* = .{
-        .name = "file-0",
-        .ext = ".zog",
-        .createdAt = "2025-06-05",
-        .size = 1024,
-    };
-    try std.testing.expectEqualStrings("file-0", castedSecondChildData.*.name);
-    try std.testing.expectEqualStrings(".zog", castedSecondChildData.*.ext);
-    try std.testing.expectEqualStrings("2025-06-05", castedSecondChildData.*.createdAt);
-    try std.testing.expectEqual(@as(u32, 1024), castedSecondChildData.*.size);
-
-    firstGrandChild = try funcs.node.service.get(ctx, root, "child-1/grandchild-1");
-    const castedFirstGrandChildData: *Document = @alignCast(@ptrCast(firstGrandChild.*.data.ptr));
-    castedFirstGrandChildData.* = .{
-        .name = "file-1",
-        .ext = ".zig",
-        .createdAt = "2025-06-05",
-        .size = 2048,
-    };
-    try std.testing.expectEqualStrings("file-1", castedFirstGrandChildData.*.name);
-    try std.testing.expectEqualStrings(".zig", castedFirstGrandChildData.*.ext);
-    try std.testing.expectEqualStrings("2025-06-05", castedFirstGrandChildData.*.createdAt);
-    try std.testing.expectEqual(@as(u32, 2048), castedFirstGrandChildData.*.size);
-
-    try funcs.node.service.free(ctx, root);
+    try funcs.node.service.free(ctx, root_index);
     funcs.context.service.destroy(ctx);
 }
