@@ -6,7 +6,10 @@ pub fn create(allocator: std.mem.Allocator) !*shapes.context.Shape {
     const context: *shapes.context.Shape = try allocator.create(shapes.context.Shape);
     context.* = .{
         .allocator = allocator,
-        .nodes = std.ArrayList(shapes.node.Shape).init(allocator),
+        .tree = .{
+            .nodes = std.ArrayList(shapes.node.Shape).init(allocator),
+            .root_index = 0,
+        },
         .behaviors = .{
             .pathing = .{
                 .delimeter = '/',
@@ -20,6 +23,6 @@ pub fn create(allocator: std.mem.Allocator) !*shapes.context.Shape {
 /// Destroys the given context, freeing associated memory and behaviors list.
 pub fn destroy(context: *shapes.context.Shape) void {
     context.*.behaviors.data.deinit();
-    context.*.nodes.deinit();
+    context.*.tree.nodes.deinit();
     context.*.allocator.destroy(context);
 }

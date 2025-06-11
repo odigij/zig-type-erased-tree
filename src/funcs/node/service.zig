@@ -6,101 +6,91 @@ pub const contextFuncs = @import("../context/index.zig");
 pub fn create(context: *shapes.context.Shape, key: []const u8, tag: []const u8) !usize {
     // NOTE:
     // - Duplicating strings due to not want to depend on global strings.
-    const key_dup = try context.allocator.dupe(u8, key);
-    const tag_dup = try context.allocator.dupe(u8, tag);
-    const behavior = try contextFuncs.behavior.service.find(context.behaviors.data, tag_dup);
+    const behavior = try contextFuncs.behavior.service.find(context.behaviors.data, tag);
 
-    const node = context.*.nodes.addOne() catch |err| {
-        context.allocator.free(key_dup);
-        context.allocator.free(tag_dup);
-        return err;
-    };
-
-    var data_ptr: ?*anyopaque = null;
-    if (behavior.*.initFn) |run| {
-        try run(context.allocator, &data_ptr);
+    var data: ?*anyopaque = null;
+    if (behavior.*.initFn) |alloc_behavior| {
+        try alloc_behavior(context.allocator, &data);
     }
 
-    const children = context.allocator.alloc(usize, 0) catch |err| {
-        if (behavior.freeFn) |cleanup| {
-            try cleanup(context.allocator, &data_ptr);
-        }
-        context.allocator.free(key_dup);
-        context.allocator.free(tag_dup);
-        return err;
-    };
-
-    const index = context.nodes.items.len - 1;
-
+    const key_dup = try context.*.allocator.dupe(u8, key);
+    const tag_dup = try context.*.allocator.dupe(u8, tag);
+    const node = try context.*.tree.nodes.addOne();
     node.* = .{
         .parent = null,
-        .children = children,
+        .children = std.ArrayList(usize).init(context.*.allocator),
         .key = key_dup,
         .data = .{
             .tag = tag_dup,
-            .ptr = data_ptr,
+            .ptr = data,
         },
     };
-
-    return index;
-}
-
-fn splitPath(allocator: std.mem.Allocator, path: []const u8, delimeter: u8) !std.ArrayList([]const u8) {
-    var iterator = std.mem.splitScalar(u8, path, delimeter);
-    var parts = std.ArrayList([]const u8).init(allocator);
-    while (iterator.next()) |part| {
-        if (part.len > 0) {
-            try parts.append(part);
-        }
+    if (context.*.tree.nodes.items.len == 1) {
+        context.*.tree.root_index = 0;
     }
-    return parts;
+    return context.*.tree.nodes.items.len - 1;
 }
 
 fn find(context: *shapes.context.Shape, index: usize, keys: *std.ArrayList([]const u8)) !usize {
-    const node = &context.nodes.items[index];
     if (keys.items.len == 0) {
         return index;
     }
     const key = keys.orderedRemove(0);
-    for (node.children) |i| {
-        const child = &context.nodes.items[i];
-        if (std.mem.eql(u8, child.key, key)) {
-            return find(context, i, keys);
+    const node = &context.*.tree.nodes.items[index];
+    for (node.*.children.items) |child_index| {
+        const child_node = &context.*.tree.nodes.items[child_index];
+        if (std.mem.eql(u8, child_node.key, key)) {
+            return find(context, child_index, keys);
         }
     }
     return error.NodeNotFound;
 }
 
+/// Splits path into keys according to delimeter and starts recursive search from the given node index.
 pub fn get(context: *shapes.context.Shape, node_index: usize, path: []const u8) !usize {
-    var keys = try splitPath(context.allocator, path, context.behaviors.pathing.delimeter);
-    defer keys.deinit();
-    return try find(context, node_index, &keys);
+    var iterator = std.mem.splitScalar(u8, path, context.*.behaviors.pathing.delimeter);
+    var parts = std.ArrayList([]const u8).init(context.*.allocator);
+    defer parts.deinit();
+    while (iterator.next()) |part| {
+        if (part.len > 0) {
+            try parts.append(part);
+        }
+    }
+
+    return try find(context, node_index, &parts);
 }
 
+/// Re-allocates parent's children container and appends child index.
 pub fn attach(context: *shapes.context.Shape, parent_index: usize, child_index: usize) !void {
-    const parent = &context.nodes.items[parent_index];
-    const child = &context.nodes.items[child_index];
-
-    // Expand parent's children list
-    const new_children: []usize = try context.allocator.realloc(parent.*.children, parent.*.children.len + 1);
-    new_children[parent.*.children.len] = child_index;
-    parent.*.children = new_children;
-
-    // Set child's parent index
+    const parent = &context.*.tree.nodes.items[parent_index];
+    try parent.*.children.append(child_index);
+    const child = &context.*.tree.nodes.items[child_index];
     child.parent = parent_index;
 }
 
-/// Recursively frees the node downward, along with any allocated tag data.
-pub fn free(context: *shapes.context.Shape, index: usize) !void {
-    const node = &context.nodes.items[index];
-    for (node.*.children) |i| {
-        try free(context, i);
-    }
-    const behavior = try contextFuncs.behavior.service.find(context.behaviors.data, node.data.tag);
+/// Searches for node data behavior & runs deallocation behavior.
+fn free(context: *shapes.context.Shape, index: usize) !void {
+    const node = &context.*.tree.nodes.items[index];
+    const behavior = try contextFuncs.behavior.service.find(context.*.behaviors.data, node.data.tag);
     if (behavior.freeFn) |run| {
-        try run(context.allocator, &node.data.ptr);
+        try run(context.*.allocator, &node.data.ptr);
     }
-    context.allocator.free(node.key);
-    context.allocator.free(node.data.tag);
-    context.allocator.free(node.children);
+    context.*.allocator.free(node.key);
+    context.*.allocator.free(node.data.tag);
+    node.children.deinit();
+    // _ = context.*.tree.nodes.orderedRemove(index);
+}
+
+/// Recursively frees node downward, along with any allocated custom data.
+pub fn freeDownward(context: *shapes.context.Shape, index: usize) !void {
+    const node = &context.*.tree.nodes.items[index];
+    for (node.*.children.items) |i| {
+        try freeDownward(context, i);
+    }
+    try free(context, index);
+}
+
+/// Recursively frees node from root.
+pub fn freeTree(context: *shapes.context.Shape) !void {
+    try freeDownward(context, context.*.tree.root_index);
 }

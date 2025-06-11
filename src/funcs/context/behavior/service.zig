@@ -2,7 +2,11 @@ const std = @import("std");
 const shapes = @import("../../../shapes/index.zig");
 
 /// Stores behavior by tag validation.
+/// Returns temporary behavior pointer.
 pub fn register(context: *shapes.context.Shape, new: shapes.node.data.behavior.Shape) !*shapes.node.data.behavior.Shape {
+    if (new.tag.len == 0) {
+        return error.invalid_tag;
+    }
     for (context.*.behaviors.data.items) |item| {
         if (std.mem.eql(u8, item.tag, new.tag)) {
             return error.BehaviorExists;

@@ -3,7 +3,10 @@ const shapes = @import("../../shapes/index.zig");
 
 pub const Shape = struct {
     allocator: std.mem.Allocator,
-    nodes: std.ArrayList(shapes.node.Shape),
+    tree: struct {
+        nodes: std.ArrayList(shapes.node.Shape),
+        root_index: usize,
+    },
     behaviors: struct {
         pathing: struct {
             delimeter: u8,
